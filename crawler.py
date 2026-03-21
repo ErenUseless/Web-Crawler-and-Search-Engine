@@ -34,6 +34,7 @@ class Crawler:
         self._max_depth = 0
         self._start_ts  = 0.0
         self._active: Set[asyncio.Task] = set()
+        self._end_ts    = 0.0   # set when crawl finishes
         # In-memory content-hash set for duplicate-body detection
         self._seen_content: Set[str] = set()
 
@@ -48,6 +49,7 @@ class Crawler:
         self._origin    = normalize_url(url) or url
         self._max_depth = max_depth
         self._start_ts  = time.time()
+        self._end_ts    = 0.0
         self._running   = True
         self._sem       = asyncio.Semaphore(config.MAX_CONCURRENT_FETCHES)
 
@@ -97,6 +99,7 @@ class Crawler:
             except (asyncio.CancelledError, Exception):
                 pass
             self._running = False
+            self._end_ts  = time.time()
             stats = await self.db.get_stats()
             log.info("Crawl finished — %s", stats)
 
@@ -122,6 +125,7 @@ class Crawler:
             pages_failed  = stats.get("pages_error", 0),
             pages_skipped = stats.get("pages_skipped", 0),
             start_time    = self._start_ts,
+            end_time      = self._end_ts,
         )
 
     # ── Internal loop ─────────────────────────────────────────────────────────
