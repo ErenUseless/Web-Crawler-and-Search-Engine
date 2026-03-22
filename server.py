@@ -23,248 +23,449 @@ log = logging.getLogger(__name__)
 
 # ── Dark HTML UI ──────────────────────────────────────────────────────────────
 _UI = r"""<!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>🕷 Web Crawler</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0d0d0f;--card:#141417;--border:#222228;
-  --green:#00e896;--blue:#5b9cf6;--red:#e85c5c;
-  --text:#d0d0d8;--muted:#606070;--yellow:#f5c842;
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Single-Node Web Crawler</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+tailwind.config = {
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        "surface-tint":"#6dfe9c","inverse-primary":"#006e36","surface-variant":"#262528",
+        "secondary-fixed-dim":"#64ecaf","on-error":"#490006","primary-fixed":"#6dfe9c",
+        "surface-container-low":"#131315","on-tertiary-container":"#004956","error-dim":"#d7383b",
+        "secondary-container":"#006c48","on-secondary-fixed-variant":"#006946",
+        "tertiary-fixed-dim":"#00cded","on-secondary-container":"#e1ffeb",
+        "surface-container-high":"#1f1f22","surface-dim":"#0e0e10",
+        "on-primary-fixed-variant":"#006a34","on-primary-fixed":"#004a22",
+        "on-tertiary-fixed":"#00333d","surface-container-lowest":"#000000",
+        "on-primary":"#005f2e","tertiary-fixed":"#00dcfe","primary-fixed-dim":"#5def8f",
+        "tertiary-container":"#00dcfe","error-container":"#9f0519","secondary-fixed":"#73fbbc",
+        "primary-dim":"#5def8f","surface-bright":"#2c2c2f","on-secondary-fixed":"#00492f",
+        "outline-variant":"#48474a","primary":"#6dfe9c","background":"#0e0e10",
+        "on-tertiary-fixed-variant":"#005361","secondary":"#73fbbc","outline":"#767577",
+        "surface-container-highest":"#262528","inverse-on-surface":"#565457",
+        "on-primary-container":"#002f13","on-surface":"#f9f5f8","inverse-surface":"#fcf8fb",
+        "error":"#ff716c","tertiary-dim":"#00cded","surface":"#0e0e10",
+        "on-background":"#f9f5f8","on-secondary":"#005e3e","tertiary":"#7ce6ff",
+        "primary-container":"#19be64","surface-container":"#19191c","secondary-dim":"#64ecaf",
+        "on-tertiary":"#005361","on-surface-variant":"#adaaad","on-error-container":"#ffa8a3"
+      },
+      fontFamily: {
+        "headline":["Space Grotesk"],"body":["Inter"],"label":["Inter"]
+      },
+      borderRadius: {"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},
+    },
+  },
 }
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,monospace;padding:28px 32px;max-width:1100px;margin:auto}
-h1{font-size:1.55rem;font-weight:700;color:var(--green);margin-bottom:22px;letter-spacing:-.5px}
-h2{font-size:.88rem;font-weight:600;color:var(--blue);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px 22px;margin-bottom:18px}
-label{font-size:.83rem;color:var(--muted);margin-right:6px}
-input[type=url],input[type=text],input[type=number]{
-  background:#0d0d0f;color:var(--text);border:1px solid var(--border);
-  padding:8px 11px;border-radius:6px;outline:none;font-size:.88rem;
-  transition:border .15s}
-input:focus{border-color:var(--green)}
-input[type=checkbox]{accent-color:var(--green);cursor:pointer}
-button{padding:8px 20px;border:none;border-radius:6px;font-size:.88rem;font-weight:700;cursor:pointer;transition:opacity .15s}
-button:hover{opacity:.85}
-.btn-go{background:var(--green);color:#000}
-.btn-stop{background:var(--red);color:#fff}
-.btn-search{background:var(--blue);color:#fff}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
-/* stats grid */
-.stats{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:10px}
-.stat{font-size:.85rem;color:var(--muted)}
-.stat b{color:var(--green);font-size:1rem}
-/* pills */
-.pill{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.72rem;font-weight:700}
-.pill-on {background:#00e89622;color:var(--green);border:1px solid var(--green)}
-.pill-off{background:#33333340;color:var(--muted);border:1px solid var(--border)}
-.pill-bp {background:#f5c84222;color:var(--yellow);border:1px solid var(--yellow)}
-/* origin bar */
-#origin-bar{font-size:.78rem;color:var(--muted);margin-bottom:6px;word-break:break-all}
-/* search results */
-.res{border-left:3px solid var(--green);padding:10px 14px;margin:8px 0;background:#0f110f;border-radius:0 6px 6px 0}
-.res a{color:var(--blue);text-decoration:none;font-weight:600}
-.res a:hover{text-decoration:underline}
-.res-meta{color:var(--muted);font-size:.75rem;margin-top:3px}
-.res-snippet{color:#b0b0c0;font-size:.85rem;margin-top:5px;line-height:1.5}
-.res-url{color:#3a3a50;font-size:.75rem;margin-top:3px;word-break:break-all}
-#search-summary{color:var(--muted);font-size:.82rem;margin-bottom:8px}
-/* progress bar */
-.pbar-wrap{height:4px;background:#1a1a22;border-radius:2px;margin-top:10px;overflow:hidden}
-.pbar{height:100%;background:var(--green);border-radius:2px;transition:width .6s ease;width:0}
-#url-input{min-width:300px}
-#q{min-width:280px}
+</script>
+<style>
+.material-symbols-outlined { font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24; }
+.glow-primary { box-shadow: 0 0 20px rgba(109,254,156,0.15); }
 </style>
 </head>
-<body>
+<body class="bg-background text-on-surface font-body selection:bg-primary/30 min-h-screen">
 
-<h1>🕷 Single-Node Web Crawler</h1>
+<main class="w-full py-12 px-8 min-h-screen">
+<div class="max-w-7xl mx-auto space-y-12">
 
-<!-- Crawl control ─────────────────────────────────────────────────────────-->
-<div class="card">
-  <h2>Crawl</h2>
-  <div class="row">
-    <label>URL</label>
-    <input id="url-input" type="url" placeholder="https://example.com" value="https://example.com"/>
-    <label>Depth</label>
-    <input id="depth" type="number" value="2" min="0" max="8" style="width:60px"/>
-    <label><input type="checkbox" id="sd" checked> Same domain</label>
-    <label><input type="checkbox" id="resume" onchange="onResumeToggle()"> Resume</label>
-    <span id="resume-note" style="font-size:.78rem;color:var(--muted);margin-left:4px"></span>
-    <button class="btn-go"  onclick="startCrawl()">▶ Start</button>
-    <button class="btn-stop" onclick="stopCrawl()">■ Stop</button>
-  </div>
+<!-- Header -->
+<div class="flex items-center gap-4 border-b border-outline-variant/20 pb-8">
+  <span class="text-2xl font-bold text-[#f9f5f8] tracking-tighter font-headline">Single-Node Web Crawler</span>
+  <div class="h-5 w-[1px] bg-outline-variant/30"></div>
+  <span id="origin-bar" class="text-[12px] font-label uppercase tracking-[0.2em] text-on-surface-variant"></span>
 </div>
 
-<!-- Status ─────────────────────────────────────────────────────────────────-->
-<div class="card">
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-    <h2 style="margin:0">Status</h2>
-    <span id="state-pill" class="pill pill-off">IDLE</span>
-    <span id="bp-pill"    class="pill pill-bp"  style="display:none">BACKPRESSURE</span>
-  </div>
-  <div id="origin-bar"></div>
-  <div class="stats" id="stats-grid">—</div>
-  <div class="pbar-wrap"><div class="pbar" id="pbar"></div></div>
+<!-- Row 1: CRAWL ENGINE + STATUS -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+  <!-- CRAWL ENGINE -->
+  <section class="lg:col-span-5 bg-surface-container-low p-8 rounded-xl space-y-8 border border-outline-variant/10">
+    <div class="flex items-center justify-between">
+      <h3 class="font-headline font-bold text-xl text-on-surface">CRAWL ENGINE</h3>
+      <span id="engine-badge" class="text-[10px] font-label bg-primary/10 text-primary px-2 py-1 rounded">READY</span>
+    </div>
+    <div class="space-y-6">
+      <div class="space-y-2">
+        <label class="text-[10px] font-label text-on-surface-variant uppercase tracking-widest">Target Entry Point</label>
+        <input id="url-input" class="w-full bg-surface-container-highest border-none rounded-sm text-sm p-3 focus:ring-1 focus:ring-primary/60 placeholder:text-on-surface-variant/30"
+               placeholder="https://example.com" type="url"/>
+        <p id="resume-note" class="text-[10px] text-primary font-label mt-1 hidden"></p>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="space-y-2">
+          <label class="text-[10px] font-label text-on-surface-variant uppercase tracking-widest">Max Depth</label>
+          <select id="depth" class="w-full bg-surface-container-highest border-none rounded-sm text-sm p-3 focus:ring-1 focus:ring-primary/60">
+            <option value="1">Depth 1</option>
+            <option value="2" selected>Depth 2</option>
+            <option value="3">Depth 3</option>
+            <option value="5">Depth 5</option>
+          </select>
+        </div>
+        <div class="flex flex-col justify-end gap-3 pb-1">
+          <label class="flex items-center gap-2 cursor-pointer group">
+            <input id="sd" checked type="checkbox"
+                   class="rounded-sm bg-surface-container-highest border-none text-primary-container focus:ring-offset-background focus:ring-primary"/>
+            <span class="text-[11px] font-label text-on-surface-variant group-hover:text-on-surface transition-colors">Same domain</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer group">
+            <input id="resume" type="checkbox" onchange="onResumeToggle()"
+                   class="rounded-sm bg-surface-container-highest border-none text-primary-container focus:ring-offset-background focus:ring-primary"/>
+            <span class="text-[11px] font-label text-on-surface-variant group-hover:text-on-surface transition-colors">Resume session</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-4 pt-4">
+      <button onclick="startCrawl()"
+              class="bg-primary-container text-on-primary-container py-4 rounded-md font-headline font-bold tracking-tight hover:brightness-110 transition-all flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">play_arrow</span>
+        START
+      </button>
+      <button onclick="stopCrawl()"
+              class="bg-surface-container-highest text-on-surface py-4 rounded-md font-headline font-bold tracking-tight border border-outline-variant/10 hover:bg-error/10 hover:text-error transition-all flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">stop</span>
+        STOP
+      </button>
+    </div>
+  </section>
+
+  <!-- STATUS / TELEMETRY -->
+  <section class="lg:col-span-7 bg-surface-container-low p-8 rounded-xl flex flex-col border border-outline-variant/10">
+    <div class="flex items-center justify-between mb-8">
+      <div class="flex items-center gap-3">
+        <div id="state-dot" class="w-2 h-2 rounded-full bg-outline-variant"></div>
+        <h3 class="font-headline font-bold text-xl text-on-surface uppercase tracking-tight">Active Telemetry</h3>
+      </div>
+      <div class="text-right">
+        <p class="text-[10px] font-label text-on-surface-variant uppercase tracking-widest">STATUS</p>
+        <p id="state-text" class="text-on-surface-variant font-headline font-bold">IDLE</p>
+      </div>
+    </div>
+    <!-- Progress Bar -->
+    <div class="mb-10">
+      <div class="flex justify-between items-end mb-3">
+        <span class="text-[10px] font-label text-on-surface-variant uppercase tracking-widest">Processing Node Index</span>
+        <span id="pbar-pct" class="text-xs font-headline font-bold text-primary">0%</span>
+      </div>
+      <div class="w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
+        <div id="pbar" class="h-full bg-primary glow-primary transition-all duration-700" style="width:0%"></div>
+      </div>
+    </div>
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-4 gap-y-10 gap-x-4">
+      <div class="space-y-1">
+        <p class="text-[9px] font-label text-on-surface-variant uppercase tracking-widest">Fetched</p>
+        <p id="stat-fetched" class="text-2xl font-headline font-bold text-on-surface tracking-tighter">—</p>
+      </div>
+      <div class="space-y-1">
+        <p class="text-[9px] font-label text-on-surface-variant uppercase tracking-widest">Indexed</p>
+        <p id="stat-indexed" class="text-2xl font-headline font-bold text-on-surface tracking-tighter">—</p>
+      </div>
+      <div class="space-y-1">
+        <p class="text-[9px] font-label text-on-surface-variant uppercase tracking-widest">Queued</p>
+        <p id="stat-queued" class="text-2xl font-headline font-bold text-on-surface tracking-tighter">—</p>
+      </div>
+      <div class="space-y-1">
+        <p class="text-[9px] font-label text-on-surface-variant uppercase tracking-widest">Failed</p>
+        <p id="stat-failed" class="text-2xl font-headline font-bold text-error tracking-tighter">—</p>
+      </div>
+      <div class="space-y-1">
+        <p class="text-[9px] font-label text-on-surface-variant uppercase tracking-widest">Elapsed</p>
+        <p id="stat-elapsed" class="text-2xl font-headline font-bold text-on-surface tracking-tighter">—</p>
+      </div>
+      <div class="space-y-1">
+        <p class="text-[9px] font-label text-on-surface-variant uppercase tracking-widest">Rate</p>
+        <p id="stat-rate" class="text-2xl font-headline font-bold text-primary tracking-tighter">—<span class="text-xs ml-1 font-normal opacity-40">p/s</span></p>
+      </div>
+      <div class="space-y-1">
+        <p class="text-[9px] font-label text-on-surface-variant uppercase tracking-widest">Skipped</p>
+        <p id="stat-skipped" class="text-2xl font-headline font-bold text-on-surface tracking-tighter">—</p>
+      </div>
+      <div class="space-y-1">
+        <p class="text-[9px] font-label text-on-surface-variant uppercase tracking-widest">Terms</p>
+        <p id="stat-terms" class="text-2xl font-headline font-bold text-on-surface tracking-tighter">—</p>
+      </div>
+    </div>
+  </section>
 </div>
 
-<!-- Search ──────────────────────────────────────────────────────────────────-->
-<div class="card">
-  <h2>Search</h2>
-  <div class="row">
-    <input id="q" type="text" placeholder="Search indexed pages…"
-           onkeydown="if(event.key==='Enter')doSearch()"/>
-    <button class="btn-search" onclick="doSearch()">🔍 Search</button>
+<!-- Row 2: SEARCH -->
+<section class="space-y-8">
+  <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <h3 class="font-headline font-bold text-3xl text-on-surface tracking-tight">Index Search</h3>
+    <div class="flex items-center gap-3 flex-1 max-w-3xl">
+      <div class="relative flex-1">
+        <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/40 text-xl">search</span>
+        <input id="q" type="text" onkeydown="if(event.key==='Enter') doSearch()"
+               class="w-full bg-surface-container-low border border-outline-variant/20 rounded-lg py-4 pl-12 pr-4 focus:ring-1 focus:ring-primary/60 text-sm"
+               placeholder="Query nodes, metadata, or document vectors..."/>
+      </div>
+      <button onclick="doSearch()"
+              class="bg-primary-container text-on-primary-container px-8 py-4 rounded-lg font-headline font-bold tracking-tight hover:brightness-105 transition-all">
+        SEARCH
+      </button>
+    </div>
   </div>
-  <div id="search-summary" style="margin-top:10px"></div>
-  <div id="results"></div>
-</div>
+
+  <!-- Search summary -->
+  <p id="search-summary" class="text-[10px] font-label text-on-surface-variant uppercase tracking-widest hidden"></p>
+
+  <!-- Results -->
+  <div id="results" class="space-y-4"></div>
+
+  <!-- Load more -->
+  <div id="load-more-wrap" class="hidden flex justify-center py-12">
+    <button id="load-more" onclick="loadMore()"
+            class="flex items-center gap-2 text-[10px] font-label uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors group">
+      Fetch Next Result Batch
+      <span class="material-symbols-outlined text-sm transition-transform group-hover:translate-y-0.5">keyboard_double_arrow_down</span>
+    </button>
+  </div>
+</section>
+
+</div><!-- /max-w -->
+</main>
+
+<!-- Background gradients -->
+<div class="fixed top-0 right-0 w-[600px] h-[600px] bg-primary/5 blur-[180px] -z-10 rounded-full"></div>
+<div class="fixed bottom-0 left-0 w-[600px] h-[600px] bg-secondary/5 blur-[180px] -z-10 rounded-full"></div>
+
+<!-- Toast container -->
+<div id="toast-area" class="fixed bottom-6 right-6 space-y-2 z-50"></div>
 
 <script>
-/* ── helpers ─────────────────────────────────────────────────────────────── */
-const $=id=>document.getElementById(id);
+/* ── Helpers ──────────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
 
-/* ── crawl control ───────────────────────────────────────────────────────── */
-async function startCrawl(){
-  const isResume=$('resume').checked;
-  const url=$('url-input').value.trim();
-  if(!isResume&&!url){alert('Enter a URL');return;}
-  const r=await fetch('/crawl',{method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      url:   isResume?'':url,   // server ignores url on resume; send empty
-      depth: +$('depth').value,
-      same_domain: $('sd').checked,
-      resume: isResume
-    })});
-  const d=await r.json();
-  showToast(d.message||d.error);
-  tick();   // immediate update; tick() will adjust poll rate automatically
+function fmt(n) {
+  if (n === undefined || n === null) return '—';
+  if (n >= 1000) return (n/1000).toFixed(1) + 'k';
+  return String(n);
 }
 
-// When resume is toggled, lock/unlock the URL and settings fields
-// and show what origin will be used
-function onResumeToggle(){
-  const checked=$('resume').checked;
-  $('url-input').disabled=checked;
-  $('depth').disabled=checked;
-  $('sd').disabled=checked;
-  if(checked){
-    // Fetch the saved origin from the last crawl to show the user
-    fetch('/status').then(r=>r.json()).then(d=>{
-      if(d.origin_url){
-        $('url-input').value=d.origin_url;
-        $('resume-note').textContent='Will continue crawl of: '+d.origin_url;
-      } else {
-        $('resume-note').textContent='No previous crawl found — will start fresh';
-      }
-    }).catch(()=>{});
-  } else {
-    $('resume-note').textContent='';
-    $('url-input').disabled=false;
-  }
-}
-async function stopCrawl(){
-  const d=await (await fetch('/stop',{method:'POST'})).json();
-  showToast(d.message);
+function fmtTime(s) {
+  if (!s) return '—';
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
 }
 
-/* ── search ──────────────────────────────────────────────────────────────── */
-async function doSearch(){
-  const q=$('q').value.trim();
-  if(!q)return;
-  $('search-summary').textContent='Searching…';
-  $('results').innerHTML='';
-  const d=await (await fetch('/search?q='+encodeURIComponent(q)+'&limit=20')).json();
-  if(!d.results||!d.results.length){
-    $('search-summary').textContent='No results for "'+q+'".';return;}
-  $('search-summary').textContent=d.count+' result(s) for "'+q+'" — '+d.elapsed_ms+'ms';
-  $('results').innerHTML=d.results.map(r=>`
-    <div class="res">
-      <div><a href="${r.url}" target="_blank" rel="noopener">${esc(r.title||r.url)}</a></div>
-      <div class="res-meta">Score: ${r.score.toFixed(5)} &nbsp;·&nbsp; Depth: ${r.depth}</div>
-      <div class="res-snippet">${esc(r.snippet)}</div>
-      <div class="res-url">${esc(r.url)}</div>
-    </div>`).join('');
-}
-
-/* ── status ticker ───────────────────────────────────────────────────────── */
-let _wasRunning = false;   // tracks previous running state to detect transitions
-
-async function tick(){
-  try{
-    const d=await (await fetch('/status')).json();
-    const running=d.is_running;
-
-    /* pill */
-    $('state-pill').textContent=running?'RUNNING':'IDLE';
-    $('state-pill').className='pill '+(running?'pill-on':'pill-off');
-    $('bp-pill').style.display=d.backpressure?'inline-block':'none';
-
-    /* origin */
-    $('origin-bar').textContent=d.origin_url||'';
-
-    /* stats — always update so the final numbers are visible after completion */
-    const elapsed=d.elapsed_seconds||0;
-    const rate=elapsed>0?(d.pages_fetched/elapsed).toFixed(2):'0.00';
-    $('stats-grid').innerHTML=
-      stat('Fetched',  d.pages_fetched)+
-      stat('Indexed',  d.pages_indexed)+
-      stat('Queued',   d.pages_queued)+
-      stat('Failed',   d.pages_failed)+
-      stat('Skipped',  d.pages_skipped)+
-      stat('Terms',    d.index_terms||0)+
-      stat('Elapsed',  elapsed.toFixed(0)+'s')+
-      stat('Rate',     rate+' p/s');
-
-    /* progress bar */
-    const total=d.pages_fetched+d.pages_queued||1;
-    $('pbar').style.width=Math.min(100,(d.pages_fetched/total*100)).toFixed(1)+'%';
-
-    /* Adaptive polling:
-       - While running: poll every 1.8 s (fast updates)
-       - After a running→idle transition: do ONE final tick to freeze the stats,
-         then switch to slow 10 s polling (keep page fresh without hammering server)
-       - Always idle (page load with no crawl): just stay on slow polling */
-    if(_wasRunning && !running){
-      // Crawl just finished — slow down
-      clearInterval(_pollTimer);
-      _pollTimer = setInterval(tick, 10000);
-    } else if(!_wasRunning && running){
-      // Crawl just started — speed up
-      clearInterval(_pollTimer);
-      _pollTimer = setInterval(tick, 1800);
-    }
-    _wasRunning = running;
-  }catch(e){}
-}
-const stat=(lbl,val)=>`<div class="stat">${lbl} <b>${val}</b></div>`;
-
-/* ── toast ────────────────────────────────────────────────────────────────── */
-function showToast(msg){
-  const t=document.createElement('div');
-  Object.assign(t.style,{
-    position:'fixed',bottom:'24px',right:'24px',background:'#1a1a2a',
-    color:'#d0d0e0',padding:'12px 20px',borderRadius:'8px',
-    border:'1px solid #333',fontSize:'.88rem',zIndex:9999,
-    boxShadow:'0 4px 16px #0008'});
-  t.textContent=msg;document.body.appendChild(t);
-  setTimeout(()=>t.remove(),4000);
-}
-
-function esc(s){
+function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// Start with slow polling; speeds up automatically once a crawl begins
+function showToast(msg, isError=false) {
+  const t = document.createElement('div');
+  t.className = `px-4 py-3 rounded-lg text-sm font-label border text-on-surface
+    ${isError ? 'bg-error/10 border-error/30 text-error' : 'bg-surface-container-high border-outline-variant/20'}`;
+  t.textContent = msg;
+  $('toast-area').appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+/* ── Crawl control ────────────────────────────────────────────────────── */
+async function startCrawl() {
+  const isResume = $('resume').checked;
+  const url = $('url-input').value.trim();
+  if (!isResume && !url) { showToast('Enter a URL', true); return; }
+  try {
+    const r = await fetch('/crawl', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        url:         isResume ? '' : url,
+        depth:       +$('depth').value,
+        same_domain: $('sd').checked,
+        resume:      isResume
+      })
+    });
+    const d = await r.json();
+    showToast(d.message || d.error, !!d.error);
+    tick();
+  } catch(e) { showToast('Connection error', true); }
+}
+
+async function stopCrawl() {
+  try {
+    const d = await (await fetch('/stop', {method:'POST'})).json();
+    showToast(d.message);
+    tick();
+  } catch(e) { showToast('Connection error', true); }
+}
+
+/* ── Resume UI ────────────────────────────────────────────────────────── */
+function onResumeToggle() {
+  const checked = $('resume').checked;
+  $('url-input').disabled  = checked;
+  $('depth').disabled      = checked;
+  $('sd').disabled         = checked;
+  const note = $('resume-note');
+  if (checked) {
+    fetch('/status').then(r=>r.json()).then(d => {
+      if (d.origin_url) {
+        $('url-input').value = d.origin_url;
+        note.textContent = 'Will resume: ' + d.origin_url;
+        note.classList.remove('hidden');
+      } else {
+        note.textContent = 'No previous crawl found — will start fresh';
+        note.classList.remove('hidden');
+      }
+    }).catch(()=>{});
+  } else {
+    note.classList.add('hidden');
+    $('url-input').disabled = false;
+  }
+}
+
+/* ── Search ───────────────────────────────────────────────────────────── */
+let _searchOffset = 0;
+let _lastQuery    = '';
+const PAGE_SIZE   = 10;
+
+async function doSearch() {
+  const q = $('q').value.trim();
+  if (!q) return;
+  _lastQuery    = q;
+  _searchOffset = 0;
+  $('results').innerHTML = '';
+  await _fetchResults(q, 0, true);
+}
+
+async function loadMore() {
+  _searchOffset += PAGE_SIZE;
+  await _fetchResults(_lastQuery, _searchOffset, false);
+}
+
+async function _fetchResults(q, offset, reset) {
+  try {
+    const r = await fetch(`/search?q=${encodeURIComponent(q)}&limit=${PAGE_SIZE + offset}`);
+    const d = await r.json();
+    const summary = $('search-summary');
+    const wrap    = $('load-more-wrap');
+
+    if (!d.results || !d.results.length) {
+      if (reset) {
+        summary.textContent = `No results for "${q}"`;
+        summary.classList.remove('hidden');
+        $('results').innerHTML = '';
+      }
+      wrap.classList.add('hidden');
+      return;
+    }
+
+    const slice = d.results.slice(offset, offset + PAGE_SIZE);
+
+    summary.textContent = `${d.count} result(s) for "${q}" — ${d.elapsed_ms}ms`;
+    summary.classList.remove('hidden');
+
+    if (reset) $('results').innerHTML = '';
+
+    slice.forEach((res, i) => {
+      const isTop = offset === 0 && i === 0;
+      const card  = document.createElement('div');
+      card.className = `group bg-surface-container-low hover:bg-surface-container
+        border-l-2 ${isTop ? 'border-primary' : 'border-outline-variant/30'}
+        p-6 transition-all flex flex-col md:flex-row gap-6
+        border border-outline-variant/10`;
+      card.innerHTML = `
+        <div class="flex-1 space-y-3">
+          <div class="flex items-center gap-3">
+            <span class="bg-${isTop?'primary/10 text-primary':'surface-container-highest text-on-surface-variant'}
+              text-[10px] font-bold px-2 py-0.5 rounded-sm font-label tracking-widest">
+              DOC_ID: ${res.page_id || '—'}
+            </span>
+            <h4 class="text-lg font-headline font-bold text-on-surface group-hover:text-primary transition-colors">
+              ${esc(res.title || res.url)}
+            </h4>
+          </div>
+          <p class="text-sm text-on-surface-variant leading-relaxed max-w-4xl">${esc(res.snippet)}</p>
+          <div class="flex items-center gap-4 pt-2">
+            <a class="text-xs text-primary underline underline-offset-4 decoration-primary/30 hover:decoration-primary font-label"
+               href="${esc(res.url)}" target="_blank" rel="noopener">${esc(res.url)}</a>
+          </div>
+        </div>
+        <div class="flex md:flex-col justify-between items-end md:w-32 border-l border-outline-variant/10 pl-6 gap-4">
+          <div class="text-right">
+            <p class="text-[9px] font-label text-on-surface-variant uppercase tracking-widest">Score</p>
+            <p class="text-2xl font-headline font-bold ${isTop?'text-primary':'text-on-surface'}">${res.score.toFixed(3)}</p>
+          </div>
+          <div class="text-right">
+            <p class="text-[9px] font-label text-on-surface-variant uppercase tracking-widest">Depth</p>
+            <p class="text-lg font-headline font-bold text-on-surface">Lv. ${res.depth}</p>
+          </div>
+        </div>`;
+      $('results').appendChild(card);
+    });
+
+    // Show load-more if there are more results beyond what we've shown
+    wrap.classList.toggle('hidden', offset + PAGE_SIZE >= d.count);
+  } catch(e) { showToast('Search failed', true); }
+}
+
+/* ── Status polling ───────────────────────────────────────────────────── */
+let _wasRunning = false;
+
+async function tick() {
+  try {
+    const d = await (await fetch('/status')).json();
+    const running = d.is_running;
+
+    // State indicator
+    $('state-text').textContent  = running ? 'RUNNING' : 'IDLE';
+    $('state-text').className    = `font-headline font-bold ${running ? 'text-primary' : 'text-on-surface-variant'}`;
+    $('state-dot').className     = `w-2 h-2 rounded-full transition-all ${running ? 'bg-primary glow-primary' : 'bg-outline-variant'}`;
+    $('engine-badge').textContent = running ? 'ACTIVE' : 'READY';
+    $('engine-badge').className  = `text-[10px] font-label px-2 py-1 rounded
+      ${running ? 'bg-primary/20 text-primary' : 'bg-primary/10 text-primary'}`;
+
+    // Origin
+    $('origin-bar').textContent = d.origin_url || '';
+
+    // Stats
+    $('stat-fetched').textContent  = fmt(d.pages_fetched);
+    $('stat-indexed').textContent  = fmt(d.pages_indexed);
+    $('stat-queued').textContent   = fmt(d.pages_queued);
+    $('stat-failed').textContent   = fmt(d.pages_failed);
+    $('stat-skipped').textContent  = fmt(d.pages_skipped);
+    $('stat-terms').textContent    = fmt(d.index_terms);
+    $('stat-elapsed').textContent  = fmtTime(d.elapsed_seconds);
+
+    const rate = d.elapsed_seconds > 0
+      ? (d.pages_fetched / d.elapsed_seconds).toFixed(2)
+      : '0.00';
+    $('stat-rate').innerHTML = `${rate}<span class="text-xs ml-1 font-normal opacity-40">p/s</span>`;
+
+    // Progress bar
+    const total = (d.pages_fetched + d.pages_queued) || 1;
+    const pct   = Math.min(100, (d.pages_fetched / total * 100)).toFixed(1);
+    $('pbar').style.width    = pct + '%';
+    $('pbar-pct').textContent = pct + '%';
+
+    // Adaptive polling: fast while running, slow when idle
+    if (_wasRunning && !running) {
+      clearInterval(_pollTimer);
+      _pollTimer = setInterval(tick, 10000);
+    } else if (!_wasRunning && running) {
+      clearInterval(_pollTimer);
+      _pollTimer = setInterval(tick, 1800);
+    }
+    _wasRunning = running;
+  } catch(e) {}
+}
+
 let _pollTimer = setInterval(tick, 10000);
-tick();   // immediate first update
+tick();
 </script>
 </body>
 </html>"""
+
 
 
 class WebServer:
@@ -405,6 +606,12 @@ class WebServer:
         if not resume and not url:
             return (_json({"error": "url is required"}),
                     "400 Bad Request", "application/json")
+
+        # Prepend https:// if the user omitted the scheme (normalize_url handles
+        # this too for links found during crawling, but we also do it here so
+        # the corrected URL is echoed back in the response message).
+        if not resume and url and not url.startswith(("http://", "https://")):
+            url = "https://" + url
 
         if resume:
             # On resume, retrieve the saved origin from DB so we can echo it

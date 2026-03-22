@@ -167,6 +167,7 @@ def normalize_url(url: str) -> str:
     """Normalise + validate URL.  Returns '' for unwanted URLs.
 
     Handles:
+      • missing scheme — prepends https:// (e.g. example.com -> https://example.com)
       • scheme and netloc lowercasing
       • default port stripping (:80, :443)
       • dot-segment resolution  (/a/../b -> /b)
@@ -177,6 +178,16 @@ def normalize_url(url: str) -> str:
       • fragment always stripped
     """
     try:
+        url = url.strip()
+        if not url:
+            return ""
+        # If no scheme at all (e.g. "example.com" or "www.example.com/page"),
+        # prepend https:// so urlparse gives us a proper netloc.
+        # Check case-insensitively so "HTTP://..." isn't double-prefixed
+        url_lower = url.lower()
+        if not url_lower.startswith(("http://", "https://", "//", "ftp://",
+                                     "mailto:", "javascript:", "data:")):
+            url = "https://" + url
         p      = urlparse(url)
         scheme = p.scheme.lower()
         if scheme not in _OK_SCHEMES:
