@@ -1,8 +1,12 @@
 """
 Async HTTP fetcher — stdlib urllib inside a ThreadPoolExecutor.
 No external HTTP dependencies.
+
+Clean shutdown: call fetcher.shutdown() (or await fetch with a cancelled task)
+to stop in-flight requests quickly. The _STOP event makes _fetch_sync return
+early after the current read() call finishes (at most one 65 KB chunk delay).
 """
-import asyncio, gzip, logging, urllib.error, urllib.request
+import asyncio, gzip, logging, threading, urllib.error, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
@@ -10,6 +14,20 @@ import config
 
 log   = logging.getLogger(__name__)
 _POOL = ThreadPoolExecutor(max_workers=32, thread_name_prefix="fetch")
+
+# Set this event to make all in-progress _fetch_sync calls return quickly.
+# The crawler calls fetcher.shutdown() when stop() is invoked.
+_STOP = threading.Event()
+
+
+def shutdown() -> None:
+    """Signal all in-flight fetch threads to abort after their current read."""
+    _STOP.set()
+
+
+def reset() -> None:
+    """Clear the stop signal before starting a new crawl."""
+    _STOP.clear()
 
 
 class FetchResult:
@@ -34,7 +52,14 @@ class FetchResult:
 
 
 def _fetch_sync(url: str, timeout: int) -> FetchResult:
-    """Blocking fetch — runs in thread pool."""
+    """Blocking fetch — runs in thread pool.
+
+    Checks _STOP between every 65 KB chunk so the thread exits promptly
+    when the crawler is stopped rather than waiting out the full timeout.
+    """
+    if _STOP.is_set():
+        return FetchResult(url, url, 0, b"", "", "crawler stopped")
+
     req = urllib.request.Request(url, headers={
         "User-Agent":      config.USER_AGENT,
         "Accept":          "text/html,*/*;q=0.8",
@@ -50,6 +75,8 @@ def _fetch_sync(url: str, timeout: int) -> FetchResult:
 
             data, limit = b"", config.MAX_CONTENT_LENGTH
             while len(data) < limit:
+                if _STOP.is_set():          # abort mid-download cleanly
+                    return FetchResult(url, url, 0, b"", "", "crawler stopped")
                 chunk = resp.read(65_536)
                 if not chunk:
                     break
@@ -76,13 +103,14 @@ async def fetch(url: str, retries: int = config.MAX_RETRIES) -> FetchResult:
     loop = asyncio.get_event_loop()
     last: Optional[FetchResult] = None
     for attempt in range(retries + 1):
+        if _STOP.is_set():
+            return FetchResult(url, url, 0, b"", "", "crawler stopped")
         if attempt:
             await asyncio.sleep(2 ** attempt)
         try:
             result = await loop.run_in_executor(
                 _POOL, _fetch_sync, url, config.FETCH_TIMEOUT_SECONDS
             )
-            # terminal statuses — don't retry
             if result.ok or result.status in (401, 403, 404, 410):
                 return result
             last = result

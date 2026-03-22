@@ -91,7 +91,8 @@ button:hover{opacity:.85}
     <label>Depth</label>
     <input id="depth" type="number" value="2" min="0" max="8" style="width:60px"/>
     <label><input type="checkbox" id="sd" checked> Same domain</label>
-    <label><input type="checkbox" id="resume"> Resume</label>
+    <label><input type="checkbox" id="resume" onchange="onResumeToggle()"> Resume</label>
+    <span id="resume-note" style="font-size:.78rem;color:var(--muted);margin-left:4px"></span>
     <button class="btn-go"  onclick="startCrawl()">▶ Start</button>
     <button class="btn-stop" onclick="stopCrawl()">■ Stop</button>
   </div>
@@ -127,13 +128,43 @@ const $=id=>document.getElementById(id);
 
 /* ── crawl control ───────────────────────────────────────────────────────── */
 async function startCrawl(){
+  const isResume=$('resume').checked;
   const url=$('url-input').value.trim();
-  if(!url){alert('Enter a URL');return;}
+  if(!isResume&&!url){alert('Enter a URL');return;}
   const r=await fetch('/crawl',{method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({url,depth:+$('depth').value,same_domain:$('sd').checked,resume:$('resume').checked})});
+    body:JSON.stringify({
+      url:   isResume?'':url,   // server ignores url on resume; send empty
+      depth: +$('depth').value,
+      same_domain: $('sd').checked,
+      resume: isResume
+    })});
   const d=await r.json();
   showToast(d.message||d.error);
+  tick();   // immediate update; tick() will adjust poll rate automatically
+}
+
+// When resume is toggled, lock/unlock the URL and settings fields
+// and show what origin will be used
+function onResumeToggle(){
+  const checked=$('resume').checked;
+  $('url-input').disabled=checked;
+  $('depth').disabled=checked;
+  $('sd').disabled=checked;
+  if(checked){
+    // Fetch the saved origin from the last crawl to show the user
+    fetch('/status').then(r=>r.json()).then(d=>{
+      if(d.origin_url){
+        $('url-input').value=d.origin_url;
+        $('resume-note').textContent='Will continue crawl of: '+d.origin_url;
+      } else {
+        $('resume-note').textContent='No previous crawl found — will start fresh';
+      }
+    }).catch(()=>{});
+  } else {
+    $('resume-note').textContent='';
+    $('url-input').disabled=false;
+  }
 }
 async function stopCrawl(){
   const d=await (await fetch('/stop',{method:'POST'})).json();
@@ -160,19 +191,22 @@ async function doSearch(){
 }
 
 /* ── status ticker ───────────────────────────────────────────────────────── */
+let _wasRunning = false;   // tracks previous running state to detect transitions
+
 async function tick(){
   try{
     const d=await (await fetch('/status')).json();
     const running=d.is_running;
+
     /* pill */
     $('state-pill').textContent=running?'RUNNING':'IDLE';
     $('state-pill').className='pill '+(running?'pill-on':'pill-off');
     $('bp-pill').style.display=d.backpressure?'inline-block':'none';
+
     /* origin */
     $('origin-bar').textContent=d.origin_url||'';
-    /* Elapsed and rate: use the server-computed frozen value when not running.
-       The server sets end_time when the crawl finishes, so elapsed_seconds
-       stops growing. We never recalculate from Date.now() here. */
+
+    /* stats — always update so the final numbers are visible after completion */
     const elapsed=d.elapsed_seconds||0;
     const rate=elapsed>0?(d.pages_fetched/elapsed).toFixed(2):'0.00';
     $('stats-grid').innerHTML=
@@ -184,11 +218,26 @@ async function tick(){
       stat('Terms',    d.index_terms||0)+
       stat('Elapsed',  elapsed.toFixed(0)+'s')+
       stat('Rate',     rate+' p/s');
+
     /* progress bar */
     const total=d.pages_fetched+d.pages_queued||1;
     $('pbar').style.width=Math.min(100,(d.pages_fetched/total*100)).toFixed(1)+'%';
-    /* slow poll right down once crawl is done — no need to update every 1.8s */
-    if(!running) clearInterval(fastPoll);
+
+    /* Adaptive polling:
+       - While running: poll every 1.8 s (fast updates)
+       - After a running→idle transition: do ONE final tick to freeze the stats,
+         then switch to slow 10 s polling (keep page fresh without hammering server)
+       - Always idle (page load with no crawl): just stay on slow polling */
+    if(_wasRunning && !running){
+      // Crawl just finished — slow down
+      clearInterval(_pollTimer);
+      _pollTimer = setInterval(tick, 10000);
+    } else if(!_wasRunning && running){
+      // Crawl just started — speed up
+      clearInterval(_pollTimer);
+      _pollTimer = setInterval(tick, 1800);
+    }
+    _wasRunning = running;
   }catch(e){}
 }
 const stat=(lbl,val)=>`<div class="stat">${lbl} <b>${val}</b></div>`;
@@ -210,8 +259,9 @@ function esc(s){
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-let fastPoll=setInterval(tick,1800);
-tick();
+// Start with slow polling; speeds up automatically once a crawl begins
+let _pollTimer = setInterval(tick, 10000);
+tick();   // immediate first update
 </script>
 </body>
 </html>"""
@@ -271,14 +321,18 @@ class WebServer:
             path, _, qs = full_path.partition("?")
             params      = dict(urllib.parse.parse_qsl(qs))
 
-            data, status, ct = await self._route(method, path, params, body)
+            result = await self._route(method, path, params, body)
+            data, status, ct = result[0], result[1], result[2]
 
+            extra = result[3] if len(result) > 3 else {}
+            extra_lines = "".join(f"{k}: {v}\r\n" for k, v in extra.items())
             response = (
                 f"HTTP/1.1 {status}\r\n"
                 f"Content-Type: {ct}\r\n"
                 f"Content-Length: {len(data)}\r\n"
                 f"Connection: close\r\n"
-                f"Access-Control-Allow-Origin: *\r\n\r\n"
+                f"Access-Control-Allow-Origin: *\r\n"
+                f"{extra_lines}\r\n"
             ).encode() + data
             writer.write(response)
             await writer.drain()
@@ -317,9 +371,12 @@ class WebServer:
     async def _status(self):
         s     = await self.crawler.get_status()
         stats = await self.db.get_stats()
+        # Show saved origin even when idle so the UI can display it
+        # in the Resume note before a crawl starts
+        origin = s.origin_url or (await self.db.get_meta("origin_url") or "")
         return _json({
             "is_running":     s.is_running,
-            "origin_url":     s.origin_url,
+            "origin_url":     origin,
             "max_depth":      s.max_depth,
             "pages_fetched":  s.pages_fetched,
             "pages_indexed":  s.pages_indexed,
@@ -340,14 +397,29 @@ class WebServer:
             return (_json({"error": "invalid JSON"}),
                     "400 Bad Request", "application/json")
 
+        resume = bool(data.get("resume", False))
         url    = str(data.get("url", "")).strip()
         depth  = max(0, min(int(data.get("depth", 2)), 10))
         sd     = bool(data.get("same_domain", True))
-        resume = bool(data.get("resume", False))
 
-        if not url:
+        if not resume and not url:
             return (_json({"error": "url is required"}),
                     "400 Bad Request", "application/json")
+
+        if resume:
+            # On resume, retrieve the saved origin from DB so we can echo it
+            # back in the response message. The crawler itself also reads it
+            # from DB — the url argument is intentionally ignored.
+            saved = await self.db.get_meta("origin_url")
+            if not saved:
+                # No previous crawl — treat as fresh start with the given URL
+                resume = False
+                if not url:
+                    return (_json({"error": "no previous crawl found and no url given"}),
+                            "400 Bad Request", "application/json")
+            else:
+                url = saved   # for the response message only
+
         if self.crawler.is_running:
             return (_json({"error": "a crawl is already running"}),
                     "409 Conflict", "application/json")
@@ -410,6 +482,9 @@ class WebServer:
 
         rows = await self.db.export_pages()
 
+        if not rows:
+            return (b"", "204 No Content", "application/json", {})
+
         if fmt == "jsonl":
             lines = [
                 json.dumps({
@@ -423,7 +498,8 @@ class WebServer:
                 for r in rows
             ]
             body = ("\n".join(lines) + "\n").encode()
-            return body, "200 OK", "application/x-ndjson"
+            headers = {"Content-Disposition": "attachment; filename=\"pages.jsonl\""}
+            return body, "200 OK", "application/x-ndjson", headers
 
         else:  # csv
             buf = io.StringIO()
@@ -433,7 +509,9 @@ class WebServer:
             for r in rows:
                 w.writerow([r["url"], r["title"], r["depth"],
                             r["word_count"], r["http_status"], r["fetched_at"]])
-            return buf.getvalue().encode(), "200 OK", "text/csv; charset=utf-8"
+            body    = buf.getvalue().encode()
+            headers = {"Content-Disposition": "attachment; filename=\"pages.csv\""}
+            return body, "200 OK", "text/csv; charset=utf-8", headers
 
     async def _search(self, params: dict):
         q     = params.get("q", "").strip()

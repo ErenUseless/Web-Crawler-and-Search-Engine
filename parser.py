@@ -164,7 +164,18 @@ class _Extractor(HTMLParser):
 
 # ── URL helpers ───────────────────────────────────────────────────────────────
 def normalize_url(url: str) -> str:
-    """Normalise + validate URL.  Returns '' for unwanted URLs."""
+    """Normalise + validate URL.  Returns '' for unwanted URLs.
+
+    Handles:
+      • scheme and netloc lowercasing
+      • default port stripping (:80, :443)
+      • dot-segment resolution  (/a/../b -> /b)
+      • double-slash collapsing (//path  -> /path)
+      • trailing slash removal  (/about/ -> /about)
+      • empty query-string drop (?       -> nothing)
+      • stable query parameter order
+      • fragment always stripped
+    """
     try:
         p      = urlparse(url)
         scheme = p.scheme.lower()
@@ -176,16 +187,28 @@ def normalize_url(url: str) -> str:
             if (scheme == "http"  and port == "80") or \
                (scheme == "https" and port == "443"):
                 netloc = host
-        path = p.path or "/"
+        # Resolve dot segments and collapse repeated slashes
+        path = _normalize_path(p.path or "/")
+        # Strip trailing slash (except bare /)
         if path != "/" and path.endswith("/"):
             path = path.rstrip("/")
-        pl = path.lower().split("?")[0]
+        # Drop URLs whose path has an unwanted extension
+        pl = path.lower()
         if any(pl.endswith(ext) for ext in _SKIP_EXT):
             return ""
+        # Stable sorted query; empty query becomes no query
         qs = urlencode(sorted(parse_qsl(p.query))) if p.query else ""
         return urlunparse((scheme, netloc, path, "", qs, ""))
     except Exception:
         return ""
+
+
+def _normalize_path(path: str) -> str:
+    """Resolve . and .. segments; collapse repeated leading slashes."""
+    import posixpath, re
+    # POSIX keeps leading // as special — collapse to single /
+    path = re.sub(r"^/+", "/", path) if path else "/"
+    return posixpath.normpath(path)
 
 
 def same_domain(a: str, b: str) -> bool:

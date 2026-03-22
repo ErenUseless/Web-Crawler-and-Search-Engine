@@ -43,6 +43,13 @@ class TestParser(unittest.TestCase):
             "http://example.com/",
         )
 
+    def test_normalize_url_keeps_nonstandard_port(self):
+        from parser import normalize_url
+        self.assertEqual(
+            normalize_url("http://example.com:8080/page"),
+            "http://example.com:8080/page",
+        )
+
     def test_normalize_url_rejects_non_http(self):
         from parser import normalize_url
         self.assertEqual(normalize_url("ftp://example.com/"), "")
@@ -52,6 +59,45 @@ class TestParser(unittest.TestCase):
         from parser import normalize_url
         self.assertEqual(normalize_url("http://example.com/img.png"), "")
         self.assertEqual(normalize_url("http://example.com/doc.pdf"), "")
+
+    def test_normalize_url_resolves_dot_segments(self):
+        """Dot segments (. and ..) must be resolved to canonical paths."""
+        from parser import normalize_url
+        self.assertEqual(
+            normalize_url("http://example.com/a/../b"),
+            "http://example.com/b",
+        )
+        self.assertEqual(
+            normalize_url("http://example.com/a/./b"),
+            "http://example.com/a/b",
+        )
+        self.assertEqual(
+            normalize_url("http://example.com/./a/../b"),
+            "http://example.com/b",
+        )
+
+    def test_normalize_url_collapses_double_slash(self):
+        """Double slashes in path must be collapsed to single slash."""
+        from parser import normalize_url
+        self.assertEqual(
+            normalize_url("http://example.com//path"),
+            "http://example.com/path",
+        )
+
+    def test_normalize_url_drops_empty_query(self):
+        """A trailing ? with no params must be dropped."""
+        from parser import normalize_url
+        self.assertEqual(
+            normalize_url("http://example.com/page?"),
+            "http://example.com/page",
+        )
+
+    def test_normalize_url_lowercases_scheme_and_host(self):
+        from parser import normalize_url
+        self.assertEqual(
+            normalize_url("HTTP://EXAMPLE.COM/Page"),
+            "http://example.com/Page",
+        )
 
     def test_same_domain(self):
         from parser import same_domain
@@ -691,6 +737,146 @@ class TestIndexerPause(unittest.IsolatedAsyncioTestCase):
         stats_after = await self.db.get_stats()
         self.assertEqual(stats_after.get("index_terms", 0), 0,
             "clear_all should remove all index rows; no orphans should remain")
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Fetcher — shutdown/reset behaviour
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestFetcherShutdown(unittest.TestCase):
+
+    def setUp(self):
+        import fetcher
+        fetcher.reset()   # always start with clean state
+
+    def tearDown(self):
+        import fetcher
+        fetcher.reset()   # leave clean for other tests
+
+    def test_reset_clears_stop_flag(self):
+        import fetcher
+        fetcher.shutdown()
+        self.assertTrue(fetcher._STOP.is_set())
+        fetcher.reset()
+        self.assertFalse(fetcher._STOP.is_set())
+
+    def test_shutdown_makes_fetch_return_immediately(self):
+        """After shutdown(), _fetch_sync must return early without connecting."""
+        import fetcher, time
+        fetcher.shutdown()
+        t0     = time.monotonic()
+        result = fetcher._fetch_sync("http://httpbin.org/delay/10", timeout=15)
+        elapsed = time.monotonic() - t0
+        self.assertLess(elapsed, 1.0,
+            f"shutdown() should make _fetch_sync return in <1s, took {elapsed:.2f}s")
+        self.assertIn("stopped", result.error)
+
+    def test_fetch_async_respects_stop(self):
+        """async fetch() should return a stopped-error result when stop is set."""
+        import fetcher, asyncio
+        fetcher.shutdown()
+        async def run():
+            return await fetcher.fetch("http://httpbin.org/delay/10")
+        result = asyncio.run(run())
+        self.assertIn("stopped", result.error)
+        self.assertFalse(result.ok)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Storage — mark_url_seen (redirect dedup)
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestMarkUrlSeen(unittest.IsolatedAsyncioTestCase):
+
+    async def asyncSetUp(self):
+        import tempfile, os
+        self._tmp  = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self._path = self._tmp.name
+        self._tmp.close()
+        from storage import Database
+        self.db = Database(self._path)
+        await self.db.initialize()
+
+    async def asyncTearDown(self):
+        import os
+        os.unlink(self._path)
+
+    async def test_mark_url_seen_prevents_requeue(self):
+        """A URL marked seen via mark_url_seen must not be enqueued later."""
+        await self.db.mark_url_seen("http://redirect-dest.com/page")
+        queued = await self.db.queue_url("http://redirect-dest.com/page", 0)
+        self.assertFalse(queued,
+            "URL already in seen_urls should not be re-queued")
+
+    async def test_mark_url_seen_idempotent(self):
+        """Calling mark_url_seen twice on the same URL must not raise."""
+        await self.db.mark_url_seen("http://idempotent.com/")
+        await self.db.mark_url_seen("http://idempotent.com/")   # must not raise
+        seen = await self.db.is_seen("http://idempotent.com/")
+        self.assertTrue(seen)
+
+    async def test_mark_url_seen_empty_string_safe(self):
+        """Passing an empty string must not raise."""
+        await self.db.mark_url_seen("")   # must not raise or insert garbage
+
+    async def test_mark_url_seen_does_not_add_to_queue(self):
+        """mark_url_seen must NOT add the URL to the fetch queue."""
+        await self.db.mark_url_seen("http://no-queue.com/page")
+        size = await self.db.queue_size()
+        self.assertEqual(size, 0, "mark_url_seen must not enqueue the URL")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Indexer — no unnecessary sleep between batches
+# ═══════════════════════════════════════════════════════════════════════════════
+class TestIndexerBatchSpeed(unittest.IsolatedAsyncioTestCase):
+
+    async def asyncSetUp(self):
+        import tempfile, os
+        self._tmp  = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self._path = self._tmp.name
+        self._tmp.close()
+        from storage import Database
+        from indexer  import Indexer
+        self.db  = Database(self._path)
+        await self.db.initialize()
+        self.idx = Indexer(self.db)
+
+    async def asyncTearDown(self):
+        import os
+        os.unlink(self._path)
+
+    async def test_indexes_multiple_batches_quickly(self):
+        """60 pages (2 batches of 30) should index in well under 2 seconds.
+        The old code slept 0.05s per batch which caused ~17s lag for 10k pages."""
+        import asyncio, time
+        from models import Page
+
+        # Insert 60 pages
+        for i in range(60):
+            p   = Page(url=f"http://speed.com/page{i}", depth=0, status="done",
+                       title=f"Page {i} title", text_content=f"content words for page {i}")
+            pid = await self.db.upsert_page(p)
+
+        # Run indexer until all are indexed, measure wall time
+        t0 = time.monotonic()
+        task = asyncio.create_task(self.idx.run_continuous(interval=0.05))
+        # Poll until all pages indexed (max 3 seconds)
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            stats = await self.db.get_stats()
+            if stats.get("pages_indexed", 0) >= 60:
+                break
+            await asyncio.sleep(0.05)
+        elapsed = time.monotonic() - t0
+        task.cancel()
+        try: await task
+        except asyncio.CancelledError: pass
+
+        stats = await self.db.get_stats()
+        self.assertGreaterEqual(stats.get("pages_indexed", 0), 60,
+            "All 60 pages should be indexed within 3 seconds")
+        self.assertLess(elapsed, 3.0,
+            f"60 pages took {elapsed:.2f}s — indexer should not sleep between batches")
 
 
 if __name__ == "__main__":

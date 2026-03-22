@@ -37,11 +37,9 @@ class QueueManager:
             return 0
         if await self._is_backpressure():
             return 0
-        added = 0
-        for url in urls:
-            if await self.db.queue_url(url, depth):
-                added += 1
-        return added
+        # Single lock acquisition + single commit for the whole batch.
+        # Previously called queue_url() N times: N locks, N commits.
+        return await self.db.queue_urls_batch(urls, depth)
 
     async def _is_backpressure(self) -> bool:
         size = await self.db.queue_size()
