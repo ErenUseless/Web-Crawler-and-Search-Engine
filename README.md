@@ -53,10 +53,6 @@ Type a URL, set depth, click **START**. Search while the crawl is running.
 - Python 3.8 or newer
 - No `pip install` needed — everything uses the standard library
 
-```bash
-python3 -c "import sqlite3, asyncio, html.parser, urllib.request; print('OK')"
-```
-
 ---
 
 ## Usage
@@ -150,7 +146,7 @@ Edit `config.py` or use environment variables:
 | Setting | Default | Description |
 |---|---|---|
 | `MAX_CONCURRENT_FETCHES` | `8` | Simultaneous in-flight requests |
-| `DOMAIN_CRAWL_DELAY` | `1.0s` | Wait between requests to same domain |
+| `DOMAIN_CRAWL_DELAY` | `0.2s` | Wait between requests to same domain |
 | `FETCH_TIMEOUT_SECONDS` | `15` | Per-request timeout |
 | `MAX_RETRIES` | `2` | Retry count (exponential backoff: 2s, 4s) |
 | `MAX_CONTENT_LENGTH` | `5 MB` | Per-page download cap |
@@ -165,10 +161,10 @@ Edit `config.py` or use environment variables:
 CRAWLER_DB=wiki.db PORT=9000 python3 main.py
 ```
 
-**For faster testing** (lower politeness):
+**For slower testing** (higher politeness):
 ```python
 # config.py
-DOMAIN_CRAWL_DELAY = 0.2   # 5x faster, less polite
+DOMAIN_CRAWL_DELAY = 1.0   # 5x slower, more polite
 ```
 
 ---
@@ -325,8 +321,6 @@ crawler_project/
 | Problem | Cause | Fix |
 |---|---|---|
 | Crawl finds thousands of pages | High depth on a large site (e.g. Wikipedia) | Use depth 1–2 for large sites |
-| Very slow crawl | `DOMAIN_CRAWL_DELAY = 1.0s` is intentionally polite | Lower to `0.2` in `config.py` for testing |
 | Search returns nothing | Index still building in background | Wait a few seconds and try again |
-| Stats don't update | Normal after crawl completes — stats freeze at final values | Expected behaviour |
 | Resume does nothing | Previous crawl completed fully | Resume re-enqueues origin automatically |
 | `crawler.db` grows large | Full text stored for all pages | Delete the file to start fresh |
