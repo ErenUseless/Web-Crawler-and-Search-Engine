@@ -24,7 +24,7 @@ SNIPPET_LENGTH     = 250   # characters
 
 # Web UI server
 SERVER_HOST = "0.0.0.0"
-SERVER_PORT = int(os.environ.get("PORT", 8080))
+SERVER_PORT = int(os.environ.get("PORT", 3600))
 
 # Indexer
 MIN_TOKEN_LENGTH = 2

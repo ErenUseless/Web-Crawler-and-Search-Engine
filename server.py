@@ -721,7 +721,7 @@ class WebServer:
             return body, "200 OK", "text/csv; charset=utf-8", headers
 
     async def _search(self, params: dict):
-        q     = params.get("q", "").strip()
+        q     = (params.get("query") or params.get("q", "")).strip()
         limit = min(int(params.get("limit", 20)), 50)
         domain = params.get("domain", "").strip() or None
 
